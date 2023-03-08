@@ -1,5 +1,8 @@
 ;;
-;; Load my keybinds and other misc binding functions.
+;; Load my keybinds and other misc functions.
+;;
+;; Truth be told, this makes it look like I really don't have that many
+;; customizations in my emacs file...  Its vanilla emacs. Really.
 ;;
 (load-file "~/lisp/keybinds.el")
 
@@ -10,11 +13,11 @@
 (autoload 'x-select-file "~/lisp/xfile.elc")
 (autoload 'x-mb3-menu "~/lisp/mb3menu.elc")
 (autoload 'groovy-mode "~/lisp/groovy-mode.elc")
+(autoload 'ajc-java-complete-mode "~/lisp/ajc-java-complete-config.elc")
 
 ;;
 ;; I go back and forth on emacsclient, if its commented out, it probably
-;; pissed me off recently. I think I read somewhere I wasn't supposed
-;; to do it this way anymore.
+;; pissed me off recently.
 ;;
 ;;(server-start)
 
@@ -27,34 +30,25 @@
 (add-to-list 'package-archives '("melpa-stable" . "http://stable.melpa.org/packages/") 'APPEND)
 (add-to-list 'package-archives '("melpa" . "http://melpa.milkbox.net/packages/") 'APPEND)
 
-;; yas is pretty sweet
-(require 'yasnippet)
-(add-to-list 'yas-snippet-dirs "~/src/yasnippet-snippets")
-(yas-reload-all)
-;; yas is cool, but not quite that cool, pick modes to use it in (see language hooks)
-;;(yas-global-mode t) 
-
 ;; tell tramp to use ssh pipes instead of scp where possible
 (setq tramp-default-method "ssh")
 
 ;; to suppress annoying magit messages (why is this needed anymore??)
 (setq magit-last-seen-setup-instructions "1.4.0")
 
+;; suppress obnoxious popup warnings - they still show up in warnings buffer
+(setq warning-minimum-level :emergency)
+
+;; yas is pretty sweet
+(require 'yasnippet)
+(add-to-list 'yas-snippet-dirs "~/src/yasnippet-snippets")
+(yas-reload-all)
+;; yas is cool, but not quite that cool, pick modes to use in (see language hooks)
+;;(yas-global-mode t) 
 
 ;;
-;; custom language mode hooks
+;; my custom language mode hooks - these might be getting out of hand...
 ;;
-
-;;
-;; This handles cases where windows and non-windows users have been
-;; editing the same file and we have mixed line endings. Add it to
-;; language and text hooks where appropriate...
-;;
-(defun hide-dos-eol ()
-  "Do not show ^M in files containing mixed UNIX and DOS line endings."
-  (interactive)
-  (setq buffer-display-table (make-display-table))
-  (aset buffer-display-table ?\^M []))
 
 ;; lots of stuff uses c-basic-offset now, so putting it in a language hook is probably a mistake
 (setq c-basic-offset 4)
@@ -62,35 +56,35 @@
 ;; hooks for all C syntax based languages (c, c++, java, etc.)
 (add-hook 'c-mode-common-hook 
 	  (lambda ()
-	    (hide-dos-eol)
+	    (remove-dos-eol)
+	    (yas-minor-mode +1)
+	    (which-function-mode +1)
 	    (cscope-minor-mode +1)))
 
 ;; C language hooks (this is JUST C) - flycheck using C standard 99
 (add-hook 'c-mode-hook
 	  (lambda ()
 	    (flycheck-mode +1)
-	    (yas-minor-mode +1)
 	    (setq flycheck-clang-language-standard "gnu99")))
 
-;; c++ language hooks - flycheck using C++11 by default: this can get annoying...
+;; c++ language hooks - flycheck using C++11 by default: c++11 can get annoying...
 ;; currently just checking c++ using C99
 (add-hook 'c++-mode-hook
 	  (lambda ()
 	    (flycheck-mode +1)
-	    (yas-minor-mode +1)
 ;	    (setq flycheck-gcc-language-standard "c++11")))
 	    (setq flycheck-clang-language-standard "gnu99")))
 
-;; jedi does some cool stuff with python, use it by default
+;; jedi does some cool stuff with python, use it by default?
+;; yas can do battle with jedi, so you probably don't want to use them together
 (add-hook 'python-mode-hook
 	  (lambda ()
-	    (jedi:setup)
+	    ;(jedi:setup)
 	    (setq jedi:complete-on-dot t)))
 
 ;; java mode hooks
 (add-hook 'java-mode-hook
 	  (lambda ()
-	    (yas-minor-mode +1)
 	    (setq indent-tabs-mode nil))) ; eclipse just can't deal with emacs tabs...
 
 ;; typescript mode hook with flycheck enabled, currently set to check syntax actively
@@ -107,11 +101,21 @@
 	    (merlin-mode +1)
 	    (flycheck-mode +1)))
 
+;; shell script mode - which function gets really confused in shell scripts
+(add-hook 'sh-mode-hook
+	  (lambda ()
+	    (yas-minor-mode +1)
+	    (which-function-mode -1)
+	    (remove-dos-eol)))
+
 ;; handle mixed windows dos eol crap in plain text files, can be added to other
 ;; modes too if needed...
+;; TODO: rename remove-dos-eol() to something like hide,
+;; so people who use my emacs file don't have kittens that the files are being
+;; modified.
 (add-hook 'text-mode-hook
 	  (lambda ()
-	    (hide-dos-eol)))
+	    (remove-dos-eol)))
 
 ;;
 ;; Add various file suffixes to mode lists
@@ -119,7 +123,6 @@
 (add-to-list 'auto-mode-alist '("\.gradle$" . groovy-mode))
 (add-to-list 'auto-mode-alist '("\\.mak$" . makefile-mode)) ; gnu makefile mode??
 (add-to-list 'auto-mode-alist '("\\.h$" . c++-mode)) ; force all .h files to c++ mode
-(add-to-list 'auto-mode-alist '("\\.ino$" . c-mode))
 (setq auto-mode-alist (cons '("\\.ts$" . typescript-mode) auto-mode-alist))
 ;; Before there was add-to-list, real elisp programmers did it this way...
 ;; These are all standard associations now.
@@ -134,8 +137,7 @@
 ;; These allow clicking on the build output in an emacs buffer
 ;; and automatically opening a buffer at the point of the error.
 ;;
-;; Not sure why I had to write some of these regex matches for
-;; error output. Maybe user error on my part??
+;; Why would you not want this??
 ;;
 (require 'compile)
 
@@ -161,7 +163,7 @@
 ;; simply ignore the TERM setting...
 ;;
 ;; Beware, actually running emacs in a dumb terminal and letting
-;; this go means you might get wacky characters in said dumb
+;; this go means you WILL get wacky characters in said dumb
 ;; terminal.
 ;;
 (require 'ansi-color)
@@ -193,15 +195,14 @@
       backup-directory-alist '(("." . "~/.emacs.d/backups"))
       delete-old-versions t
       kept-new-versions 3
-      kept-old-versions 1
-      version-control t )
+      kept-old-versions 2
+      version-control t)
 
 ;;
 ;; Toggle on and off useful (or not so useful) functionality.
 ;; custom-set-variables has a habit of picking some of these up,
 ;; and resaving them as custom so be careful.
 ;;
-(which-func-mode)     			; turns on
 (setq inhibit-splash-screen t)		; splash screens were like from the 80s right? Totally. -barf-
 (setq frame-title-format "%b")		; file name in titlebar
 (set-mouse-color "red")			; love my big red cursor....
@@ -214,6 +215,7 @@
  ;; If there is more than one, they won't work right.
  '(blink-cursor-mode nil)
  '(bmkp-last-as-first-bookmark-file "~/.emacs.d/bookmarks")
+ '(custom-enabled-themes (quote (deeper-blue)))
  '(menu-bar-mode t)
  '(scroll-bar-mode nil)
  '(show-paren-mode t)
@@ -225,21 +227,25 @@
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
- '(default ((t (:inherit nil :stipple nil :background "gray91" :foreground "black" :inverse-video nil :box nil :strike-through nil :overline nil :underline nil :slant normal :weight normal :height 105 :width normal :foundry "unknown" :family "DejaVu Sans Mono"))))
+ '(default ((t (:inherit nil :stipple nil :inverse-video nil :box nil :strike-through nil :overline nil :underline nil :slant normal :weight normal :height 105 :width normal :foundry "unknown" :family "DejaVu Sans Mono"))))
  '(bmkp-no-local ((t (:foreground "red"))))
- '(font-lock-comment-face ((((class color) (min-colors 88) (background light)) (:foreground "Forestgreen" :slant italic))))
- '(font-lock-doc-face ((((class color) (min-colors 88) (background light)) (:foreground "Forestgreen" :slant italic))))
- '(font-lock-function-name-face ((((class color) (min-colors 88) (background light)) (:foreground "Blue1" :weight bold))))
- '(font-lock-keyword-face ((((class color) (min-colors 88) (background light)) (:foreground "dark slate blue"))))
- '(font-lock-string-face ((((class color) (min-colors 88) (background light)) (:foreground "gray40"))))
+ '(font-lock-builtin-face ((t (:foreground "SkyBlue"))))
+ '(font-lock-comment-delimiter-face ((t (:foreground "forestgreen" :slant italic))))
+ '(font-lock-comment-face ((t (:foreground "ForestGreen" :slant italic))))
+ '(font-lock-doc-face ((t (:foreground "forestgreen"))))
+ '(font-lock-function-name-face ((t (:foreground "dodger blue" :weight bold))))
+ '(font-lock-keyword-face ((t (:foreground "SkyBlue"))))
+ '(font-lock-string-face ((t (:foreground "light slate grey"))))
  '(font-lock-type-face ((((class color) (min-colors 88) (background light)) (:foreground "Blue1"))))
  '(font-lock-variable-name-face ((((class color) (min-colors 88) (background light)) (:foreground "Blue"))))
- '(magit-branch-local ((t (:foreground "DodgerBlue4"))))
- '(magit-branch-remote ((t (:foreground "dark green"))))
- '(magit-diff-added ((t (:background "#cceecc" :foreground "black"))))
- '(magit-diff-added-highlight ((t (:background "#cceecc" :foreground "black"))))
- '(magit-diff-removed ((t (:background "#eecccc" :foreground "black"))))
- '(magit-diff-removed-highlight ((t (:background "#eecccc" :foreground "black"))))
- '(magit-section-heading ((t (:foreground "medium blue" :weight bold))))
- '(magit-section-highlight ((t (:background "white"))))
- '(magit-tag ((t (:foreground "dark violet")))))
+ '(logview-name ((t (:inherit font-lock-string-face :foreground "blue"))))
+ '(logview-thread ((t (:inherit font-lock-variable-name-face :foreground "gray40"))))
+ '(magit-branch-local ((t (:foreground "dodger blue"))))
+ '(magit-branch-remote ((t (:foreground "forestgreen"))))
+ '(magit-diff-added ((t (:background "#002b00" :foreground "white"))))
+ '(magit-diff-added-highlight ((t (:background "#002b00" :foreground "white"))))
+ '(magit-diff-removed ((t (:background "#2b0000" :foreground "white"))))
+ '(magit-diff-removed-highlight ((t (:background "#2b0000" :foreground "white"))))
+ '(magit-section-heading ((t (:foreground "RoyalBlue1" :weight bold))))
+ '(magit-section-highlight ((t (:background "gray14"))))
+ '(magit-tag ((t (:foreground "MediumOrchid1")))))
