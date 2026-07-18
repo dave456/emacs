@@ -1,17 +1,13 @@
 ;;
-;; Some convienent functions for keybinds
+;; Some convienent functions
 ;;
 
-;;
-;; Tweaked open file routine. This just toggles read-only mode on the buffer
-;; NOTUSED
-;;
+;; Tweaked open file routine
 (defun find-file-writable (arg)
   "Find a file and make the buffer writable"
   (interactive "p")
   (call-interactively 'find-file)
-  (when buffer-read-only
-    (call-interactively 'toggle-read-only)))
+  (if buffer-read-only (call-interactively 'toggle-read-only)))
 
 ;; Toggle for insert/overstrike mode
 (defun toggle-insert-mode ()
@@ -19,22 +15,40 @@
   (interactive)
   (setq overwrite-mode (not overwrite-mode)))
 
+;; clean up backup files - don't have this bound anywhere...
+(defun cleanup-backup-files ()
+  "Clean up backup files not accessed in a week"
+  (message "Deleting old backup files...")
+  (let ((week (* 60 60 24 7))
+	(current (float-time (current-time))))
+    (dolist (file (directory-files temporary-file-directory t))
+      (when (and (backup-file-name-p file)
+		 (> (- current (float-time (fifth (file-attributes file))))
+		    week))
+	(message "%s" file)
+	(delete-file file)))))
+
 ;;
-;; When opening read-only files invoke sudo to allow editing of
-;; system files, etc. There is also some hackery to make dired via
-;; find-file work correctly and not open via sudo.
-;; Finally, new files should not be opened with sudo by default.
+;; This handles cases where windows and non-windows users have been
+;; editing the same file and we have mixed line endings. Add it to
+;; language and text hooks where appropriate. I should probably
+;; rename this, because it doesn't actually remove the eols, it
+;; just hides them.
 ;;
-;; At one point I was messing with file-exists-p and
-;; file-directory-p. I leave this comment here for my future self
-;; in case I ever need to remember those functions again.
-;;
-(defun find-file-sudo (arg)
-  "open file, if read-only open via sudo"
-  (interactive "p")
-  (call-interactively 'find-file)
-  (when (and buffer-read-only buffer-file-name)
-    (find-alternate-file (concat "/sudo::" buffer-file-name))))
+(defun remove-dos-eol ()
+  "Do not show ^M in files containing mixed UNIX and DOS line endings."
+  (interactive)
+  (setq buffer-display-table (make-display-table))
+  (aset buffer-display-table ?\^M []))
+
+;; just a function to do ansi highlighting on a buffer, this is
+;; annoying as it does actually modify the buffer. Probably should
+;; figure out a better way to do this...
+(require 'ansi-color)
+(defun display-ansi-colors ()
+  (interactive)
+  (let ((inhibit-read-only t))
+    (ansi-color-apply-on-region (point-min) (point-max))))
 
 ;;
 ;; Define a custom minor mode and keymap for overriding keybinds
@@ -49,14 +63,17 @@
 (define-minor-mode my-mode
   "Maintains keybindings I really want"
   :init-value t
-  ;;:lighter " my"
+  ;;:lighter " my-mode"
   :keymap my-mode-map)
 
 ;;
 ;; Place keybindings in this mode map that you want to override
 ;; EVERYTHING. Oftentimes modes will redefine keys. Keys added
-;; here will always take precedence. Basically, here be keybindings
-;; that I am totally addicted to.
+;; here will always take precedence. This is for us old guys who
+;; don't want their keymaps to change... ;)
+;;
+;; If you use the global yas mode thingy, then yas will potentially
+;; override, if you stick to listing minors then its order dependent.
 ;;
 (define-key my-mode-map [mouse-3] #'mouse-save-then-kill)
 
@@ -67,17 +84,7 @@
 (define-globalized-minor-mode global-my-mode my-mode my-mode)
 (add-to-list 'emulation-mode-map-alists `((my-mode . ,my-mode-map)))
 
-;;
-;; A cute ui hook in the minor mode menu to turn off our minor mode
-;; in the minibuffer. For debugging keybinds, i.e. my overrides
-;; broke something...
-;;
-(defun turn-off-my-mode ()
-  "Turn off my-mode."
-  (my-mode -1))
-(add-hook 'minibuffer-setup-hook #'turn-off-my-mode)
-
-;; Advertise our mode
+;; Advertise our new mode
 (provide 'my-mode)
 
 ;;
@@ -86,7 +93,7 @@
 (define-key esc-map "!" 'shell-command)
 (define-key esc-map "b" 'buffer-menu)
 (define-key esc-map "c" 'compile)
-(define-key esc-map "f" 'find-file-sudo)
+(define-key esc-map "f" 'find-file-writable)
 (define-key esc-map "g" 'goto-line)
 (define-key esc-map "i" 'insert-file)
 (define-key esc-map "l" 'bookmark-bmenu-list)
